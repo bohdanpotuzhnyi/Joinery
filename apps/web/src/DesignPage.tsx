@@ -2,6 +2,8 @@
 // Customer surface: parametric design (zero-LLM path) + the order lifecycle —
 // confirm → manufacturer review → prototype → verify → finalize (design/06 §2).
 import { useCallback, useEffect, useState } from 'react';
+import { ModelViewer } from './ModelViewer';
+import { ArPreview } from './ArPreview';
 
 interface Part {
   id: string;
@@ -20,6 +22,7 @@ interface SolveResponse {
     warnings?: string[];
   };
   cutListCsv?: string;
+  sceneGlbBase64?: string;
 }
 
 interface Manufacturer { manufacturerId: string; name: string; productClasses: string[] }
@@ -188,7 +191,10 @@ export function DesignPage() {
         {res?.ok && g && (
           <>
             <div className="card">
-              <h3>Front view</h3>
+              <h3>3D model</h3>
+              {res.sceneGlbBase64 && <ModelViewer glbBase64={res.sceneGlbBase64} />}
+              {res.sceneGlbBase64 && <details style={{ marginTop: '0.75rem' }}><summary>View in your room (AR)</summary><ArPreview glbBase64={res.sceneGlbBase64} /></details>}
+              <h4 style={{ marginTop: '1rem' }}>Front elevation</h4>
               <div className="drawing-wrap">
                 <svg width={W + 16} height={H + 16} role="img" aria-label="wardrobe front elevation">
                   <g transform="translate(8,8)">

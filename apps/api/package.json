@@ -13,6 +13,7 @@
     "@furniture/contracts": "workspace:*",
     "@furniture/exporters": "workspace:*",
     "@furniture/kernel": "workspace:*",
+    "@furniture/llm-gateway": "workspace:*",
     "@furniture/manual": "workspace:*",
     "@furniture/scene": "workspace:*",
     "@nestjs/common": "^10.3.10",

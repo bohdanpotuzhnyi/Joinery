@@ -26,4 +26,7 @@ export interface FabricationExporter<TOptions = Record<string, unknown>> {
 }
 
 export { cutListCsvExporter } from './cutlist-csv';
-// cnc-dxf, laser-svg, print-3mf exporters register here as they land (design/03)
+export { cncDxfExporter } from './dxf';
+export { laserSvgExporter } from './laser-svg';
+export { print3mfExporter } from './print-3mf';
+export { summaryPdfExporter } from './summary-pdf';

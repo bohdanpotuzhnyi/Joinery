@@ -8,9 +8,10 @@ import manufacturerProfileSchema from '../schemas/manufacturer-profile.schema.js
 import designBriefSchema from '../schemas/design-brief.schema.json';
 import manualDocumentSchema from '../schemas/manual-document.schema.json';
 import workflowEventSchema from '../schemas/workflow-event.schema.json';
+import designSpecDeltaSchema from '../schemas/design-spec-delta.schema.json';
 
 import type {
-  DesignSpec, PartGraph, ManufacturerProfile, DesignBrief, ManualDocument, WorkflowEvent,
+  DesignSpec, DesignSpecDelta, PartGraph, ManufacturerProfile, DesignBrief, ManualDocument, WorkflowEvent,
 } from './types';
 
 export * from './types';
@@ -22,6 +23,7 @@ export const schemas = {
   designBrief: designBriefSchema,
   manualDocument: manualDocumentSchema,
   workflowEvent: workflowEventSchema,
+  designSpecDelta: designSpecDeltaSchema,
 } as const;
 
 const ajv = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true });
@@ -37,6 +39,7 @@ export const validateManufacturerProfile = compile<ManufacturerProfile>(manufact
 export const validateDesignBrief = compile<DesignBrief>(designBriefSchema);
 export const validateManualDocument = compile<ManualDocument>(manualDocumentSchema);
 export const validateWorkflowEvent = compile<WorkflowEvent>(workflowEventSchema);
+export const validateDesignSpecDelta = compile<DesignSpecDelta>(designSpecDeltaSchema);
 
 export function formatErrors(errors: ErrorObject[] | null | undefined): string[] {
   return (errors ?? []).map((e) => `${e.instancePath || '/'} ${e.message ?? 'invalid'}`);

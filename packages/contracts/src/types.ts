@@ -5,16 +5,41 @@
 
 export type ProductType = 'wardrobe' | 'bed' | 'vanity' | 'kommode';
 
+/** Scalars for simple parameters; nested objects/arrays for structured ones
+ *  (e.g. the wardrobe `sections` layout). Templates validate the shape. */
+export type ParamValue = number | string | boolean | ParamValue[] | { [key: string]: ParamValue };
+
+/** Customer room context: typed dimensions + optional uploaded photo.
+ *  The more we know, the better the proposal; photo analysis is a later
+ *  vision-model hook — storage and scale-print support come first. */
+export interface RoomContext {
+  widthMm?: number;
+  depthMm?: number;
+  heightMm?: number;
+  photoKey?: string;
+  notes?: string;
+}
+
 export interface DesignSpec {
   specVersion: 1;
   projectId: string;
   revision: number;
   manufacturerId?: string;
   productType: ProductType;
-  parameters: Record<string, number | string | boolean>;
+  parameters: Record<string, ParamValue>;
+  room?: RoomContext;
   finish?: { materialId?: string; colorId?: string };
   origin?: 'llm' | 'form' | 'fastpath';
   notes?: string;
+}
+
+/** The only mutable shape an LLM may produce; it is merged into a revision. */
+export interface DesignSpecDelta {
+  productType?: ProductType;
+  parametersPatch: Record<string, number | string | boolean | null>;
+  finishPatch?: Record<string, string | null>;
+  assumptions?: string[];
+  clarifyingQuestion?: string | null;
 }
 
 export type Face = 'front' | 'back' | 'top' | 'bottom' | 'left' | 'right' | 'edge';
@@ -110,10 +135,34 @@ export interface ManufacturerProfile {
     finishes?: { id: string; displayName: string; kind?: string }[];
   };
   capabilities: Capability[];
+  tools?: ShopTool[];
+  services?: ShopService[];
+  customerModifiable?: {
+    dimensions?: boolean;
+    layout?: boolean;
+    materials?: boolean;
+    finishes?: boolean;
+    hardware?: boolean;
+  };
   standards?: { id: 'system32'; params?: Record<string, unknown> }[];
   productClasses: ProductClass[];
   rules?: { maxPieceWeightKg?: number; leadTimeDays?: number; orderFormat?: 'dxf+csv_v1' };
 }
+
+export type ShopToolKind =
+  | 'cnc_3axis' | 'cnc_5axis' | 'laser_cutter' | 'fdm_printer' | 'sla_printer'
+  | 'edgebander' | 'panel_saw' | 'drill_press' | 'sander' | 'spray_booth';
+
+export interface ShopTool {
+  kind: ShopToolKind;
+  name?: string;
+  envelopeMm?: { x?: number; y?: number; z?: number };
+  notes?: string;
+}
+
+export type ShopService =
+  | 'prototype_print' | 'room_print' | 'assembly' | 'delivery'
+  | 'design_consultation' | 'installation';
 
 export interface DesignBrief {
   briefVersion: 1;

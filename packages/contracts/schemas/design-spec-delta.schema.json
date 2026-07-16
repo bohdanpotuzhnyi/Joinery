@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://furniture-platform.org/schemas/design-spec-delta.schema.json",
+  "title": "DesignSpecDelta",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["parametersPatch"],
+  "properties": {
+    "productType": { "type": "string", "enum": ["wardrobe", "bed", "vanity", "kommode"] },
+    "parametersPatch": { "type": "object", "additionalProperties": { "type": ["number", "string", "boolean", "null"] } },
+    "finishPatch": { "type": "object", "additionalProperties": { "type": ["string", "null"] } },
+    "assumptions": { "type": "array", "items": { "type": "string" }, "maxItems": 8 },
+    "clarifyingQuestion": { "type": ["string", "null"], "maxLength": 500 }
+  }
+}

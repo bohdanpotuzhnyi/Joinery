@@ -8,7 +8,7 @@ import {
   type DesignSpec,
 } from '@furniture/contracts';
 import { solve } from '@furniture/kernel';
-import { buildScene } from '@furniture/scene';
+import { buildGlb, buildObj, buildScene } from '@furniture/scene';
 import { cutListCsvExporter } from '@furniture/exporters';
 import demoWardrobeSpec from '../fixtures/wardrobe-spec.json';
 import { store } from './store';
@@ -45,6 +45,9 @@ export class DesignController {
       ok: true,
       partGraph: result.graph,
       scene: buildScene(result.graph),
+      // Kept inline for the stateless solver endpoint. Project artifacts move
+      // to content-addressed storage through the export endpoint.
+      sceneGlbBase64: Buffer.from(buildGlb(result.graph)).toString('base64'),
       cutListCsv: cutList.files[0].content,
       warnings: cutList.warnings,
     };

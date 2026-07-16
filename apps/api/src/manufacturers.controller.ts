@@ -6,6 +6,7 @@ import {
   assertValid, validateManufacturerProfile, type ManufacturerProfile,
 } from '@furniture/contracts';
 import { store } from './store';
+import { solve } from '@furniture/kernel';
 
 @Controller('api/manufacturers')
 export class ManufacturersController {
@@ -37,6 +38,12 @@ export class ManufacturersController {
       throw new HttpException({ error: (e as Error).message }, HttpStatus.BAD_REQUEST);
     }
     store.upsertManufacturer(profile);
-    return { ok: true, manufacturerId: profile.manufacturerId };
+    // A capability/catalog change is allowed, but never silently invalidates
+    // a live design: the portal receives the affected-project list to review.
+    const affected = store.listProjects({ manufacturerId: profile.manufacturerId })
+      .map((project) => ({ id: project.id, result: solve(project.revisions.at(-1)!.designspec, profile) }))
+      .filter((entry) => !entry.result.ok)
+      .map((entry) => ({ id: entry.id, errors: entry.result.ok ? [] : entry.result.errors }));
+    return { ok: true, manufacturerId: profile.manufacturerId, affectedProjects: affected };
   }
 }

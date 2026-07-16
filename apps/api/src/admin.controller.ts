@@ -5,43 +5,9 @@
 // placeholder is sent back. Demo-grade: no auth yet; ships behind /ops login
 // in M6.
 import { Body, Controller, Get, HttpException, HttpStatus, Post, Put } from '@nestjs/common';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { dirname, join } from 'path';
+import { loadModelConfig as load, saveModelConfig as save, MASK, type ModelConfig } from './model-config';
 
-export interface ModelConfig {
-  provider: 'openai-compatible' | 'anthropic';
-  baseUrl: string;
-  apiKey: string;
-  modelSmall: string;
-  modelLarge: string;
-  agentInstruction: string;
-}
-
-// cwd is apps/api in dev (pnpm --filter) and /repo in the container — both
-// writable, and overridable via DATA_DIR for any other layout.
-const DATA_FILE = join(process.env.DATA_DIR ?? join(process.cwd(), 'data'), 'model-config.json');
-const MASK = '••••••••';
-
-const DEFAULTS: ModelConfig = {
-  provider: 'openai-compatible',
-  baseUrl: 'http://localhost:11434/v1',
-  apiKey: '',
-  modelSmall: 'qwen3:8b',
-  modelLarge: 'qwen3:32b',
-  agentInstruction:
-    'You are the furniture design assistant. You only help design furniture this manufacturer can build. ' +
-    'You never compute dimensions yourself — you emit DesignSpec parameter patches for the kernel to validate.',
-};
-
-function load(): ModelConfig {
-  if (!existsSync(DATA_FILE)) return { ...DEFAULTS };
-  return { ...DEFAULTS, ...(JSON.parse(readFileSync(DATA_FILE, 'utf8')) as Partial<ModelConfig>) };
-}
-
-function save(cfg: ModelConfig): void {
-  mkdirSync(dirname(DATA_FILE), { recursive: true });
-  writeFileSync(DATA_FILE, JSON.stringify(cfg, null, 2));
-}
+export type { ModelConfig } from './model-config';
 
 function masked(cfg: ModelConfig) {
   return {

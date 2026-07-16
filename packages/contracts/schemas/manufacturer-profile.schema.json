@@ -62,6 +62,42 @@
         }
       }
     },
+    "tools": {
+      "description": "Concrete machines on the shop floor. Informs capability validation (envelopes) and lets customers see what the workshop actually runs.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string", "enum": ["cnc_3axis", "cnc_5axis", "laser_cutter", "fdm_printer", "sla_printer", "edgebander", "panel_saw", "drill_press", "sander", "spray_booth"] },
+          "name": { "type": "string", "description": "make/model, e.g. 'Biesse Rover A'" },
+          "envelopeMm": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "z": { "type": "number" } }
+          },
+          "notes": { "type": "string", "maxLength": 500 }
+        }
+      }
+    },
+    "services": {
+      "description": "What the workshop offers beyond cutting parts.",
+      "type": "array",
+      "items": { "type": "string", "enum": ["prototype_print", "room_print", "assembly", "delivery", "design_consultation", "installation"] }
+    },
+    "customerModifiable": {
+      "description": "Which aspects of a design the customer is allowed to change when ordering from this workshop.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dimensions": { "type": "boolean" },
+        "layout": { "type": "boolean", "description": "sections, doors, interior organisation" },
+        "materials": { "type": "boolean" },
+        "finishes": { "type": "boolean" },
+        "hardware": { "type": "boolean" }
+      }
+    },
     "standards": {
       "type": "array",
       "items": {

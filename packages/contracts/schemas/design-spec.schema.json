@@ -13,9 +13,21 @@
     "manufacturerId": { "type": "string" },
     "productType": { "type": "string", "enum": ["wardrobe", "bed", "vanity", "kommode"] },
     "parameters": {
-      "description": "Template-specific parameters, validated against the product template's own parameter schema (mm for lengths).",
+      "description": "Template-specific parameters, validated against the product template's own parameter schema (mm for lengths). Values may be nested (e.g. wardrobe `sections` array).",
       "type": "object",
-      "additionalProperties": { "type": ["number", "string", "boolean", "integer"] }
+      "additionalProperties": { "type": ["number", "string", "boolean", "integer", "object", "array"] }
+    },
+    "room": {
+      "description": "Customer room context: typed dimensions and an optional uploaded photo key. Drives room-aware validation and the scale room shell in print packs.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "widthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "depthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "heightMm": { "type": "number", "exclusiveMinimum": 0 },
+        "photoKey": { "type": "string" },
+        "notes": { "type": "string", "maxLength": 2000 }
+      }
     },
     "finish": {
       "type": "object",

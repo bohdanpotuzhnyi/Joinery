@@ -10,7 +10,8 @@
     "test": "echo 'no tests yet'"
   },
   "dependencies": {
-    "@furniture/contracts": "workspace:*"
+    "@furniture/contracts": "workspace:*",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

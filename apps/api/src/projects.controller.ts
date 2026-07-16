@@ -3,17 +3,29 @@
 // manufacturer's queue) → role-guarded transitions → revisions loop.
 // Roles come from the request body — demo-grade stand-in for real auth (M6+).
 import { Body, Controller, Get, HttpException, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { createHash } from 'crypto';
+import { appendFileSync, mkdirSync } from 'fs';
+import { dirname, join } from 'path';
 import {
   assertValid, validateDesignSpec,
   type DesignSpec, type WorkflowEvent, type WorkflowState,
 } from '@furniture/contracts';
 import { solve } from '@furniture/kernel';
-import { buildScene } from '@furniture/scene';
+import { buildGlb, buildScene } from '@furniture/scene';
 import { cutListCsvExporter } from '@furniture/exporters';
 import { store, type StoredProject } from './store';
 import { allowedNext, applyTransition, TransitionError } from './workflow';
 
 type Role = WorkflowEvent['actor']['role'];
+const evidenceFile = join(process.env.DATA_DIR ?? join(process.cwd(), 'data'), 'confirmation-records.ndjson');
+
+function recordConfirmation(project: StoredProject, spec: DesignSpec, graph: unknown): string {
+  const hash = createHash('sha256').update(JSON.stringify({ projectId: project.id, revision: spec.revision, spec, graph })).digest('hex');
+  mkdirSync(dirname(evidenceFile), { recursive: true });
+  // Append-only evidence: revisions are never overwritten or recomputed in place.
+  appendFileSync(evidenceFile, `${JSON.stringify({ hash, projectId: project.id, revision: spec.revision, at: new Date().toISOString(), spec, graph })}\n`);
+  return hash;
+}
 
 function summary(p: StoredProject) {
   const spec = p.revisions[p.revisions.length - 1].designspec;
@@ -48,7 +60,7 @@ export class ProjectsController {
   get(@Param('id') id: string) {
     const p = store.getProject(id);
     if (!p) throw new HttpException({ error: `No project "${id}"` }, HttpStatus.NOT_FOUND);
-    const { result } = solveProject(p);
+    const { result, spec } = solveProject(p);
     return {
       ...summary(p),
       events: p.events,
@@ -57,6 +69,7 @@ export class ProjectsController {
         ? {
             partGraph: result.graph,
             scene: buildScene(result.graph),
+            sceneGlbBase64: Buffer.from(buildGlb(result.graph)).toString('base64'),
             cutListCsv: cutListCsvExporter.export(result.graph, {}).files[0].content,
           }
         : { solveErrors: result.errors }),
@@ -88,14 +101,15 @@ export class ProjectsController {
   confirm(@Param('id') id: string) {
     const p = store.getProject(id);
     if (!p) throw new HttpException({ error: `No project "${id}"` }, HttpStatus.NOT_FOUND);
-    const { result } = solveProject(p);
+    const { result, spec } = solveProject(p);
     if (!result.ok) {
       return { ok: false, errors: result.errors };
     }
     try {
-      // Evidence: hash-worthy snapshot of what the customer saw (design/06 §2.3).
+      // Immutable evidence: exact intent and generated geometry shown at consent.
+      const confirmationHash = recordConfirmation(p, spec, result.graph);
       applyTransition(p, 'customer_confirmed', { role: 'customer' }, undefined,
-        [`confirmation:rev${p.revisions.length}`]);
+        [`confirmation:${confirmationHash}`]);
       applyTransition(p, 'geometry_generated', { role: 'system' },
         `${result.graph.parts.length} parts, ${result.graph.hardware.reduce((n, h) => n + h.count, 0)} hardware items`);
       applyTransition(p, 'manufacturer_review', { role: 'system' });

@@ -20,8 +20,14 @@ services:
       context: ..
       dockerfile: infra/Dockerfile.api
     restart: unless-stopped
-    env_file: [../.env]
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      DATA_DIR: /repo/data
     expose: ["3000"]
+    volumes:
+      - api_data:/repo/data
     depends_on:
       postgres: { condition: service_healthy }
       minio: { condition: service_started }
@@ -71,3 +77,4 @@ volumes:
   pg_data:
   minio_data:
   ollama_data:
+  api_data:

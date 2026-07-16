@@ -6,12 +6,14 @@ import { DesignPage } from './DesignPage';
 import { AdminPage } from './AdminPage';
 import { MfrPage } from './MfrPage';
 import { OpsPage } from './OpsPage';
+import { ManualPage } from './ManualPage';
 
 const nav = [
   { path: '/design', label: 'Design studio' },
   { path: '/mfr', label: 'Manufacturer' },
   { path: '/ops', label: 'Ops' },
   { path: '/admin', label: 'Setup' },
+  { path: '/manual', label: 'Manual' },
 ];
 
 const titles: Record<string, { eyebrow: string; title: string; sub: string }> = {
@@ -35,6 +37,7 @@ const titles: Record<string, { eyebrow: string; title: string; sub: string }> = 
     title: 'Sanity review console',
     sub: 'The mandatory human gate: re-verify every order before it enters production.',
   },
+  '/manual': { eyebrow: 'Assembly', title: 'Build manual', sub: 'Step through the deterministic instructions for an exact project revision.' },
 };
 
 function Home() {
@@ -109,6 +112,7 @@ export function App() {
         {path === '/admin' && <AdminPage />}
         {path === '/mfr' && <MfrPage />}
         {path === '/ops' && <OpsPage />}
+        {path === '/manual' && <ManualPage />}
         {path === '/' && <Home />}
       </main>
     </>
