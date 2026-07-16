@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://furniture-platform.org/schemas/manual-document.schema.json",
+  "title": "ManualDocument",
+  "description": "Generated interactive assembly manual. Derived deterministically from a PartGraph (topological sort of the joint DAG). LLM may only rewrite captionFriendly; step order, parts, and hardware are never LLM-authored.",
+  "type": "object",
+  "required": ["manualVersion", "sourcePartGraphHash", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "manualVersion": { "const": 1 },
+    "sourcePartGraphHash": { "type": "string" },
+    "totalEstimatedMinutes": { "type": "number" },
+    "tools": { "type": "array", "items": { "type": "string" } },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["stepNo", "partsIntroduced", "hardwareUsed", "captionTemplate"],
+        "additionalProperties": false,
+        "properties": {
+          "stepNo": { "type": "integer", "minimum": 1 },
+          "partsIntroduced": { "type": "array", "items": { "type": "string" }, "description": "part ids added in this step" },
+          "hardwareUsed": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["kind", "count"],
+              "properties": { "sku": { "type": "string" }, "kind": { "type": "string" }, "count": { "type": "integer" } }
+            }
+          },
+          "joints": { "type": "array", "items": { "type": "string" }, "description": "joint ids completed in this step" },
+          "captionTemplate": { "type": "string", "description": "deterministic template-generated caption — always present, works with zero LLM" },
+          "captionFriendly": { "type": "string", "description": "optional LLM-polished caption; validated to reference only real part/hardware ids" },
+          "explodedOffsets": {
+            "type": "object",
+            "additionalProperties": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+            "description": "partId -> [dx,dy,dz] explosion vector (mm)"
+          },
+          "cameraPose": { "type": "object" },
+          "warnings": { "type": "array", "items": { "type": "string" } },
+          "twoPerson": { "type": "boolean", "default": false },
+          "estimatedMinutes": { "type": "number" }
+        }
+      }
+    }
+  }
+}

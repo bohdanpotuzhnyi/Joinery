@@ -1,0 +1,17 @@
+{
+  "specVersion": 1,
+  "projectId": "prj_demo_wardrobe",
+  "revision": 1,
+  "manufacturerId": "mfr_demo",
+  "productType": "wardrobe",
+  "parameters": {
+    "width": 800,
+    "height": 2100,
+    "depth": 600,
+    "doorCount": 2,
+    "shelfCount": 4,
+    "hangingRail": false
+  },
+  "finish": { "materialId": "MDF18_white" },
+  "origin": "form"
+}

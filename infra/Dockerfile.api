@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+FROM node:22-alpine AS build
+RUN corepack enable
+WORKDIR /repo
+COPY pnpm-workspace.yaml package.json ./
+COPY packages ./packages
+COPY apps ./apps
+RUN pnpm install --frozen-lockfile=false
+RUN pnpm build
+
+FROM node:22-alpine
+RUN corepack enable
+WORKDIR /repo
+COPY --from=build /repo ./
+# api statically serves the built SPA (apps/web/dist) in production
+ENV NODE_ENV=production
+EXPOSE 3000
+CMD ["node", "apps/api/dist/src/main.js"]

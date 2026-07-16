@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Single-server deployment (design/05 §2, design/07 §2).
+# Usage: cp ../.env.example ../.env && docker compose up -d --build
+name: furniture-platform
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [api]
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    restart: unless-stopped
+    env_file: [../.env]
+    expose: ["3000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_started }
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: furniture
+      POSTGRES_USER: furniture
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U furniture"]
+      interval: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-furniture}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-changeme}
+    volumes:
+      - minio_data:/data
+    expose: ["9000"]
+
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cpu
+    restart: unless-stopped
+    expose: ["8000"]
+    profiles: ["voice"] # opt-in: docker compose --profile voice up -d
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    expose: ["11434"]
+    volumes:
+      - ollama_data:/root/.ollama
+    profiles: ["local-llm"] # opt-in: docker compose --profile local-llm up -d
+
+volumes:
+  caddy_data:
+  pg_data:
+  minio_data:
+  ollama_data:

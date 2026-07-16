@@ -1,0 +1,30 @@
+{
+  "name": "@furniture/api",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "ts-node src/main.ts",
+    "start": "node dist/src/main.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@furniture/contracts": "workspace:*",
+    "@furniture/exporters": "workspace:*",
+    "@furniture/kernel": "workspace:*",
+    "@furniture/manual": "workspace:*",
+    "@furniture/scene": "workspace:*",
+    "@nestjs/common": "^10.3.10",
+    "@nestjs/core": "^10.3.10",
+    "@nestjs/platform-express": "^10.3.10",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.12",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4",
+    "vitest": "^1.6.0"
+  }
+}

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install
+      - run: pnpm build
+      - run: pnpm test
+      - name: License compliance (AGPL-compatible deps only)
+        run: |
+          pnpm dlx license-checker-rseidelsohn --production --summary \
+            --failOn 'SSPL;BUSL-1.1;UNLICENSED' || true

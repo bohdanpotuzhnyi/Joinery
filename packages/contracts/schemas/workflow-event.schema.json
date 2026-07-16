@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://furniture-platform.org/schemas/workflow-event.schema.json",
+  "title": "WorkflowEvent",
+  "description": "Audit record of one transition in the two-bosses order workflow (design/06 §2.3). Append-only; the current state of a project is the last event.",
+  "type": "object",
+  "required": ["eventVersion", "projectId", "from", "to", "actor", "at"],
+  "additionalProperties": false,
+  "properties": {
+    "eventVersion": { "const": 1 },
+    "projectId": { "type": "string" },
+    "from": { "$ref": "#/$defs/state" },
+    "to": { "$ref": "#/$defs/state" },
+    "actor": {
+      "type": "object",
+      "required": ["role"],
+      "additionalProperties": false,
+      "properties": {
+        "role": { "type": "string", "enum": ["customer", "manufacturer", "ops", "system"] },
+        "id": { "type": "string" }
+      }
+    },
+    "at": { "type": "string", "format": "date-time" },
+    "specRevision": { "type": "integer", "minimum": 1 },
+    "evidenceKeys": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "object-storage keys of immutable evidence bound to this transition (confirmation renders, review notes, sanity checklist)"
+    },
+    "note": { "type": "string", "maxLength": 4000 }
+  },
+  "$defs": {
+    "state": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "customer_confirmed",
+        "geometry_generated",
+        "manufacturer_review",
+        "prototype_printed",
+        "customer_verify",
+        "finalized",
+        "order_submitted",
+        "sanity_review",
+        "in_production",
+        "closed"
+      ]
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://furniture-platform.org/schemas/design-brief.schema.json",
+  "title": "DesignBrief",
+  "description": "Structured outcome of conversational needs discovery. Seeds the first DesignSpec. Produced by the LLM edge, schema-validated before use.",
+  "type": "object",
+  "required": ["briefVersion", "sessionId", "manufacturerId"],
+  "additionalProperties": false,
+  "properties": {
+    "briefVersion": { "const": 1 },
+    "sessionId": { "type": "string" },
+    "manufacturerId": { "type": "string" },
+    "room": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["bedroom", "living", "kitchen", "hallway", "office", "bathroom", "other"] },
+        "dimensionsMm": {
+          "type": "object",
+          "properties": { "w": { "type": "number" }, "d": { "type": "number" }, "h": { "type": "number" } }
+        },
+        "photoKeys": { "type": "array", "items": { "type": "string" } },
+        "constraints": { "type": "array", "items": { "type": "string" }, "description": "e.g. 'sloped ceiling on north wall', 'radiator under window'" }
+      }
+    },
+    "productClass": { "type": "string", "enum": ["wardrobe", "bed", "vanity", "kommode", "kitchen", "shelf", "table", "unknown"] },
+    "needs": { "type": "array", "items": { "type": "string" }, "description": "normalized needs, e.g. 'hanging space for coats', 'storage for two people'" },
+    "budgetHint": { "type": "string", "enum": ["low", "mid", "high", "unknown"] },
+    "outOfScope": {
+      "type": "boolean",
+      "description": "true when the discovered need cannot be met by this manufacturer's productClasses — UI must redirect honestly"
+    },
+    "notes": { "type": "string", "maxLength": 4000 }
+  }
+}

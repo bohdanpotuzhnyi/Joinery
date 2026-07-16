@@ -1,0 +1,36 @@
+{
+  "profileVersion": 1,
+  "manufacturerId": "mfr_demo",
+  "identity": { "name": "Demo Möbelwerkstatt", "locale": "de-CH", "contact": "shop@example.org" },
+  "stableCatalog": {
+    "fasteners": [
+      { "sku": "conf_6.3x50", "kind": "confirmat_6.3x50", "datasheet": { "pilotMm": 4, "clearanceMm": 5 } }
+    ],
+    "hinges": [
+      { "sku": "hinge_clip_110", "kind": "clip_top_110", "datasheet": { "cupDiaMm": 35, "cupDepthMm": 13 } }
+    ],
+    "connectors": [
+      { "sku": "cam_15_dowel_8", "kind": "cam_dowel_pair", "datasheet": { "camBoreMm": 15, "camDepthMm": 13, "dowelDiaMm": 8 } }
+    ],
+    "finishes": [
+      { "id": "MDF18_white", "displayName": "White MDF", "kind": "melamine" },
+      { "id": "PLY18_oak", "displayName": "Oak Plywood", "kind": "veneer" }
+    ]
+  },
+  "capabilities": [
+    {
+      "process": "cnc_wood_2d",
+      "materials": ["MDF18", "PLY18", "MDF12"],
+      "envelopeMm": { "x": 2500, "y": 1250 },
+      "minFeatureMm": 8,
+      "internalCornerRadiusMm": 4
+    },
+    { "process": "drilling", "params": {} },
+    { "process": "print_prototype_fdm", "envelopeMm": { "x": 220, "y": 220, "z": 250 } }
+  ],
+  "standards": [
+    { "id": "system32", "params": { "pitchMm": 32, "boreMm": 5, "setbackMm": 37 } }
+  ],
+  "productClasses": ["wardrobe", "bed", "kommode"],
+  "rules": { "maxPieceWeightKg": 120, "leadTimeDays": 15, "orderFormat": "dxf+csv_v1" }
+}

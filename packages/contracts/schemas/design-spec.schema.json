@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://furniture-platform.org/schemas/design-spec.schema.json",
+  "title": "DesignSpec",
+  "description": "Canonical user design intent. LLMs may only produce validated patches of this document; all geometry is derived from it deterministically by the kernel.",
+  "type": "object",
+  "required": ["specVersion", "projectId", "revision", "productType", "parameters"],
+  "additionalProperties": false,
+  "properties": {
+    "specVersion": { "const": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "revision": { "type": "integer", "minimum": 1 },
+    "manufacturerId": { "type": "string" },
+    "productType": { "type": "string", "enum": ["wardrobe", "bed", "vanity", "kommode"] },
+    "parameters": {
+      "description": "Template-specific parameters, validated against the product template's own parameter schema (mm for lengths).",
+      "type": "object",
+      "additionalProperties": { "type": ["number", "string", "boolean", "integer"] }
+    },
+    "finish": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "materialId": { "type": "string" },
+        "colorId": { "type": "string" }
+      }
+    },
+    "origin": { "type": "string", "enum": ["llm", "form", "fastpath"] },
+    "notes": { "type": "string", "maxLength": 2000 }
+  }
+}

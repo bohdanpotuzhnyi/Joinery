@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://furniture-platform.org/schemas/manufacturer-profile.schema.json",
+  "title": "ManufacturerProfile",
+  "description": "The bigger boss. Machine-readable capability database produced by manufacturer onboarding. Stable = enumerated SKUs; flexible = parameterized processes; standards = activated generators. The kernel may only propose what this profile allows.",
+  "type": "object",
+  "required": ["profileVersion", "manufacturerId", "identity", "stableCatalog", "capabilities", "productClasses"],
+  "additionalProperties": false,
+  "properties": {
+    "profileVersion": { "const": 1 },
+    "manufacturerId": { "type": "string", "minLength": 1 },
+    "identity": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "locale": { "type": "string" },
+        "contact": { "type": "string" }
+      }
+    },
+    "stableCatalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fasteners": { "$ref": "#/$defs/skuList" },
+        "hinges": { "$ref": "#/$defs/skuList" },
+        "slides": { "$ref": "#/$defs/skuList" },
+        "legs": { "$ref": "#/$defs/skuList" },
+        "connectors": { "$ref": "#/$defs/skuList" },
+        "edgebands": { "$ref": "#/$defs/skuList" },
+        "finishes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "displayName"],
+            "properties": {
+              "id": { "type": "string" },
+              "displayName": { "type": "string" },
+              "kind": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["process"],
+        "additionalProperties": false,
+        "properties": {
+          "process": { "type": "string", "enum": ["cnc_wood_2d", "edge_banding", "drilling", "print_prototype_fdm", "lacquering", "veneering"] },
+          "materials": { "type": "array", "items": { "type": "string" } },
+          "envelopeMm": {
+            "type": "object",
+            "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "z": { "type": "number" } }
+          },
+          "minFeatureMm": { "type": "number" },
+          "internalCornerRadiusMm": { "type": "number" },
+          "params": { "type": "object" }
+        }
+      }
+    },
+    "standards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "enum": ["system32"] },
+          "params": { "type": "object" }
+        }
+      }
+    },
+    "productClasses": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "enum": ["wardrobe", "bed", "vanity", "kommode", "kitchen", "shelf", "table"] }
+    },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxPieceWeightKg": { "type": "number" },
+        "leadTimeDays": { "type": "number" },
+        "orderFormat": { "type": "string", "enum": ["dxf+csv_v1"] }
+      }
+    }
+  },
+  "$defs": {
+    "skuList": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sku", "kind"],
+        "properties": {
+          "sku": { "type": "string" },
+          "kind": { "type": "string" },
+          "datasheet": { "type": "object", "description": "bore patterns, dimensions, load ratings — drives feature generation" }
+        }
+      }
+    }
+  }
+}

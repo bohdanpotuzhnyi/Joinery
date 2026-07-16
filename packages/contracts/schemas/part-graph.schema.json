@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://furniture-platform.org/schemas/part-graph.schema.json",
+  "title": "PartGraph",
+  "description": "Template-agnostic canonical output of the kernel: every part with exact dimensions, joints between parts, and the hardware list. All fabrication exporters, the scene builder, and the manual generator consume ONLY this.",
+  "type": "object",
+  "required": ["graphVersion", "source", "units", "parts", "joints", "hardware"],
+  "additionalProperties": false,
+  "properties": {
+    "graphVersion": { "const": 1 },
+    "source": {
+      "type": "object",
+      "required": ["projectId", "revision"],
+      "additionalProperties": false,
+      "properties": {
+        "projectId": { "type": "string" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "specHash": { "type": "string", "description": "sha256 of the DesignSpec this graph was derived from" }
+      }
+    },
+    "units": { "const": "mm" },
+    "parts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "qty", "size", "material"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^P[0-9]{2,}$", "description": "Stable part ID, engraved on the physical part" },
+          "name": { "type": "string" },
+          "qty": { "type": "integer", "minimum": 1 },
+          "size": {
+            "type": "object",
+            "required": ["length", "width", "thickness"],
+            "additionalProperties": false,
+            "properties": {
+              "length": { "type": "number", "exclusiveMinimum": 0 },
+              "width": { "type": "number", "exclusiveMinimum": 0 },
+              "thickness": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          },
+          "material": { "type": "string", "description": "material id from the manufacturer stock catalog, e.g. MDF18" },
+          "grain": { "type": "string", "enum": ["length", "width", "none"] },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": { "type": "string", "enum": ["dowel_hole", "camlock_bore", "camlock_pin_hole", "confirmat_pilot", "shelf_pin_hole", "hinge_cup", "dado", "rabbet", "engrave_label"] },
+                "face": { "type": "string", "enum": ["front", "back", "top", "bottom", "left", "right", "edge"] },
+                "x": { "type": "number" },
+                "y": { "type": "number" },
+                "params": { "type": "object" }
+              }
+            }
+          },
+          "role": { "type": "string", "description": "semantic role for manuals/scene, e.g. side_left, top, shelf, door" },
+          "transform": {
+            "type": "object",
+            "description": "assembled position: translation (mm) + rotation (deg) in the product's local frame",
+            "properties": {
+              "t": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+              "r": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 }
+            }
+          }
+        }
+      }
+    },
+    "joints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "partA", "partB"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "type": "string", "enum": ["cam_dowel", "confirmat", "dowel_glued", "shelf_pins", "hinge", "slide", "screw", "rail_bracket"] },
+          "partA": { "type": "string", "description": "part id (the supporting part)" },
+          "partB": { "type": "string", "description": "part id (the incoming part)" },
+          "hardwareSku": { "type": "string" },
+          "count": { "type": "integer", "minimum": 1 },
+          "structural": { "type": "boolean", "default": true }
+        }
+      }
+    },
+    "hardware": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "count"],
+        "additionalProperties": false,
+        "properties": {
+          "sku": { "type": "string", "description": "concrete SKU from ManufacturerProfile.stableCatalog when resolved" },
+          "kind": { "type": "string" },
+          "count": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "boundingBox": {
+      "type": "object",
+      "properties": {
+        "w": { "type": "number" }, "h": { "type": "number" }, "d": { "type": "number" }
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  }
+}
