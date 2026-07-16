@@ -20,9 +20,10 @@ describe('cutlist-csv exporter', () => {
     expect(a).toEqual(b);
   });
 
-  it('emits the verified door row', () => {
+  it('emits the verified door rows (per-instance parts)', () => {
     const csv = cutListCsvExporter.export(result.graph, {}).files[0].content;
-    expect(csv).toContain('P05,Door,2,2096,396.5,18,MDF18,length');
+    const doorRows = csv.split('\n').filter((row) => row.includes('Door') && row.includes('2096,396.5,18'));
+    expect(doorRows).toHaveLength(2); // each physical door has its own engraved ID
   });
 
   it('emits a valid ZIP-backed 3MF prototype and a PDF summary', () => {

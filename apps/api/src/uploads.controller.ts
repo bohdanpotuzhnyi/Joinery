@@ -3,7 +3,6 @@
 // references the key (spec.room.photoKey). Analysis of the photo (what's in
 // the room, dimension estimation) is a vision-model hook on top of this store.
 import { Body, Controller, Get, HttpException, HttpStatus, Param, Post, Res } from '@nestjs/common';
-import type { Response } from 'express';
 import { createHash } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -34,7 +33,7 @@ export class UploadsController {
   }
 
   @Get(':key')
-  serve(@Param('key') key: string, @Res() res: Response) {
+  serve(@Param('key') key: string, @Res() res: { setHeader: (name: string, value: string) => void; send: (data: Buffer) => void }) {
     if (!/^[a-f0-9]{16}\.(jpeg|png|webp)$/.test(key)) {
       throw new HttpException({ error: 'Bad key.' }, HttpStatus.BAD_REQUEST);
     }
