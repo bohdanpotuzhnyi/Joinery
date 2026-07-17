@@ -11,8 +11,9 @@ import { ClientPortalController, ManufacturerPortalController, OpsPortalControll
 import { ManualController } from './manual.controller';
 import { SttController } from './stt.controller';
 import { UploadsController } from './uploads.controller';
+import { TableController } from './table.controller';
 
 @Module({
-  controllers: [HealthController, DesignController, AdminController, ManufacturersController, ProjectsController, ChatController, ExportsController, ClientPortalController, ManufacturerPortalController, OpsPortalController, ManualController, SttController, UploadsController],
+  controllers: [HealthController, DesignController, AdminController, ManufacturersController, ProjectsController, ChatController, ExportsController, ClientPortalController, ManufacturerPortalController, OpsPortalController, ManualController, SttController, UploadsController, TableController],
 })
 export class AppModule {}

@@ -3,7 +3,7 @@
 // The schemas are the source of truth; keep these in sync (checked by tests
 // validating fixtures against BOTH the schema and these types).
 
-export type ProductType = 'wardrobe' | 'bed' | 'vanity' | 'kommode';
+export type ProductType = 'wardrobe' | 'bed' | 'vanity' | 'kommode' | 'table';
 
 /** Scalars for simple parameters; nested objects/arrays for structured ones
  *  (e.g. the wardrobe `sections` layout). Templates validate the shape. */
