@@ -79,10 +79,26 @@ export class OpenAICompatibleModelPort implements ModelPort {
   constructor(private readonly baseUrl: string, private readonly apiKey = '', private readonly models: Record<'small' | 'large', string> = { small: 'gpt-4o-mini', large: 'gpt-4o-mini' }) {}
   async completeStructured(req: StructuredRequest): Promise<StructuredResponse> {
     const messages = req.messages.map((m) => ({ role: m.role, content: toOpenAIContent(m.content) }));
-    const res = await fetch(`${this.baseUrl.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}) }, body: JSON.stringify({ model: this.models[req.tier], messages: [{ role: 'system', content: req.system }, ...messages], max_tokens: req.maxTokens, response_format: { type: 'json_schema', json_schema: { name: 'structured_response', strict: true, schema: req.schema } } }) });
+    const res = await fetch(`${this.baseUrl.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}) }, body: JSON.stringify({
+      model: this.models[req.tier],
+      messages: [{ role: 'system', content: req.system }, ...messages],
+      max_tokens: req.maxTokens,
+      response_format: { type: 'json_schema', json_schema: { name: 'structured_response', strict: true, schema: req.schema } },
+      // "Thinking" models served via vLLM (Qwen3 and similar) burn the whole
+      // token budget on a hidden reasoning trace unless told not to, leaving
+      // no room for the actual answer. Ignored as an unrecognized field by
+      // providers that don't support it.
+      chat_template_kwargs: { enable_thinking: false },
+    }) });
     if (!res.ok) throw new ModelGatewayError(`OpenAI-compatible provider returned ${res.status}: ${await res.text()}`);
-    const body = await res.json() as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
-    const content = body.choices?.[0]?.message?.content; if (!content) throw new ModelGatewayError('Provider returned no structured message content.');
+    const body = await res.json() as { choices?: { message?: { content?: string; reasoning?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+    const content = body.choices?.[0]?.message?.content;
+    if (!content) {
+      const spentOnReasoning = Boolean(body.choices?.[0]?.message?.reasoning);
+      throw new ModelGatewayError(spentOnReasoning
+        ? 'Provider spent its whole token budget on internal reasoning and never produced a final answer — try raising maxTokens.'
+        : 'Provider returned no structured message content.');
+    }
     return { json: JSON.parse(content), usage: { inputTokens: body.usage?.prompt_tokens ?? 0, outputTokens: body.usage?.completion_tokens ?? 0 } };
   }
 }
