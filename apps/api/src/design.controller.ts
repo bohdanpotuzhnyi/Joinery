@@ -16,6 +16,15 @@ import { store } from './store';
 import { decodeImageUpload } from './image-validation';
 import { audit, merge, port, usedToday } from './llm-pipeline';
 
+// Keep in sync with the templates actually registered in @furniture/kernel —
+// a manufacturer's productClasses can list types (e.g. "kommode") that have
+// no template at all, which would otherwise dead-end every solve() call.
+const PARAM_CHEAT_SHEET: Record<string, string> = {
+  wardrobe: 'width, height, depth (all required, exterior mm), doorCount (int), shelfCount (int), hangingRail (boolean)',
+  bed: 'mattressWidth (required, mm), mattressLength, mattressCount (1 or 2), legHeight (mm from floor to the underside of the frame), headboard (boolean), headboardHeight, storageDrawerCount — never set frameClearance: it is a hidden ~10mm manufacturing tolerance between the mattress and the frame, not a dimension any photo shows',
+  vanity: 'width (required), depth, height (mm), pedestalWidth (width of the built-in drawer/cabinet block under the worktop — not a single decorative leg), drawerCount, mirror (boolean), mirrorWidth, mirrorHeight',
+};
+
 @Controller('api/designs')
 export class DesignController {
   /** Browser-friendly smoke test: solves the golden wardrobe fixture. */
@@ -69,6 +78,11 @@ export class DesignController {
     const manufacturer = store.getManufacturer(manufacturerId);
     if (!manufacturer) throw new HttpException({ error: `No manufacturer "${manufacturerId}"` }, HttpStatus.BAD_REQUEST);
 
+    const buildableTypes = manufacturer.productClasses.filter((pc) => pc in PARAM_CHEAT_SHEET);
+    if (buildableTypes.length === 0) {
+      throw new HttpException({ error: `${manufacturer.identity.name} doesn't offer a product type this feature supports yet (wardrobe, bed, or vanity).` }, HttpStatus.BAD_REQUEST);
+    }
+
     const sessionId = body.sessionId ?? 'anonymous';
     const limit = Number(process.env.SESSION_TOKEN_BUDGET ?? 200000);
     const dailyLimit = Number(process.env.DAILY_TOKEN_BUDGET ?? 2000000);
@@ -78,10 +92,19 @@ export class DesignController {
 
     const gateway = port();
     const started = Date.now();
+    const paramGuide = buildableTypes.map((t) => `- ${t}: ${PARAM_CHEAT_SHEET[t]}`).join('\n');
     let delta: DesignSpecDelta;
     try {
       const response = await gateway.port.completeStructured({
-        system: `${gateway.instruction}\nYou will be shown a photo or a dimensioned line drawing of a furniture piece (e.g. an IKEA-style assembly diagram). Extract a DesignSpecDelta describing it as closely as possible. Manufacturer ${manufacturer.identity.name} offers: ${manufacturer.productClasses.join(', ')}. Only use a productType this manufacturer supports. Read any printed measurements and convert to millimeters (cm × 10, inches × 25.4). Omit a parameter rather than guessing if it isn't legible. Never calculate geometry yourself — only emit parameter values for the kernel to validate.`,
+        system: `${gateway.instruction}
+You will be shown a photo or a dimensioned line drawing of a furniture piece (e.g. an IKEA-style assembly diagram). Extract a DesignSpecDelta describing it.
+
+Manufacturer ${manufacturer.identity.name} builds: ${buildableTypes.join(', ')}. productType must be exactly one of those — if the piece doesn't clearly match any of them, leave productType unset and use clarifyingQuestion to ask instead of guessing.
+
+parametersPatch keys must be flat, top-level, and spelled EXACTLY as listed below — plain numbers in millimeters (convert cm × 10, inches × 25.4). Never a string with a unit suffix, never a nested object, never a different key name:
+${paramGuide}
+
+Read any printed measurements directly off the drawing; omit a parameter rather than guessing if it isn't legible. Never calculate geometry yourself — only emit the parameter values above for the kernel to validate.`,
         messages: [{
           role: 'user',
           content: [
@@ -100,12 +123,15 @@ export class DesignController {
       throw new HttpException({ error: `Image extraction failed: ${(error as Error).message}` }, HttpStatus.BAD_GATEWAY);
     }
 
+    if (!delta.productType && delta.clarifyingQuestion) {
+      return { ok: false, delta, errors: [{ code: 'needs_clarification', message: delta.clarifyingQuestion }] };
+    }
     const base: DesignSpec = {
       specVersion: 1,
       projectId: `prj_img_${randomUUID().slice(0, 8)}`,
       revision: 1,
       manufacturerId,
-      productType: delta.productType ?? 'wardrobe',
+      productType: delta.productType ?? buildableTypes[0] as DesignSpec['productType'],
       parameters: {},
     };
     const next = merge(base, delta);

@@ -16,9 +16,13 @@ describe('bed template — two 2000×900 mattresses', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const find = (name: string) => result.graph.parts.find((p) => p.name === name)!;
-    expect(find('Side rail').size).toEqual({ length: 2056, width: 120, thickness: 18 });
-    expect(find('Slat').qty).toBe(15);
+    expect(find('Side rail (left)').size).toEqual({ length: 2056, width: 120, thickness: 18 });
+    expect(find('Side rail (right)').size).toEqual({ length: 2056, width: 120, thickness: 18 });
+    expect(result.graph.parts.filter((p) => p.role === 'slat').length).toBe(15);
     expect(find('Center beam').size.thickness).toBe(36);
+    // Every part carries its own transform now — no two instances collapse onto the same spot.
+    const positions = result.graph.parts.map((p) => p.transform?.t?.join(','));
+    expect(new Set(positions).size).toBe(positions.length);
     expect(validatePartGraph(result.graph)).toBe(true);
   });
   it('rejects drawers without the required leg clearance', () => {
@@ -35,8 +39,10 @@ describe('vanity template — 900×450 with three drawers', () => {
     if (!result.ok) return;
     const find = (name: string) => result.graph.parts.find((p) => p.name === name)!;
     expect(find('Worktop').size).toEqual({ length: 900, width: 450, thickness: 18 });
-    expect(find('Drawer front').size).toEqual({ length: 296, width: 234, thickness: 18 });
-    expect(find('Drawer box side').qty).toBe(6);
+    expect(find('Drawer front 1').size).toEqual({ length: 296, width: 234, thickness: 18 });
+    expect(result.graph.parts.filter((p) => p.role === 'drawer_side').length).toBe(6);
+    const positions = result.graph.parts.map((p) => p.transform?.t?.join(','));
+    expect(new Set(positions).size).toBe(positions.length);
     expect(validatePartGraph(result.graph)).toBe(true);
   });
   it('enforces knee clearance', () => {

@@ -51,40 +51,104 @@ function validate(spec: DesignSpec, _profile: ManufacturerProfile): ConstraintEr
   return errors;
 }
 
+// Placement convention (drives GLB/OBJ), matching the wardrobe template:
+//   world X = width (right+), Y = height (up+), Z = length (foot+, head-);
+//   origin at the CENTER of the footprint on the floor.
+//   Part local axes: X = length, Y = width, Z = thickness. Rotations (deg):
+//   [0,90,0]   rails/battens/center beam running head-to-foot: L→Z, W→Y, T→X
+//   [0,90,90]  vertical legs:                                  L→Y, W→Z, T→X
+//   [90,0,0]   slats, lying flat:                               L→X, W→Z, T→Y
+//   [90,0,90]  under-bed drawer boxes:                          L→Z, W→X, T→Y
+//   [0,0,0]    head/foot rail, headboard (length runs along X):  L→X, W→Y, T→Z
+const R_ALONG_LENGTH: [number, number, number] = [0, 90, 0];
+const R_UPRIGHT: [number, number, number] = [0, 90, 90];
+const R_FLAT: [number, number, number] = [90, 0, 0];
+const R_DRAWER: [number, number, number] = [90, 0, 90];
+const R_NONE: [number, number, number] = [0, 0, 0];
+
 function build(spec: DesignSpec, profile: ManufacturerProfile): PartGraph {
   const p = params(spec); const { width: W, length: L } = interior(p);
   const centerBeam = W > 1200; const slatCount = Math.ceil((L - p.slatWidth) / (p.slatWidth + 70)) + 1;
   const slatGap = (L - slatCount * p.slatWidth) / (slatCount - 1);
   const material = `MDF${p.t}`; const beamThickness = L > 1800 ? p.t * 2 : p.t;
-  const parts: Part[] = [
-    { id: 'P01', name: 'Side rail', role: 'side_rail', qty: 2, size: { length: L + 2 * p.t, width: 120, thickness: p.t }, material, grain: 'length' },
-    { id: 'P02', name: 'Head rail', role: 'head_rail', qty: 1, size: { length: W, width: 120, thickness: p.t }, material, grain: 'length' },
-    { id: 'P03', name: 'Foot rail', role: 'foot_rail', qty: 1, size: { length: W, width: 120, thickness: p.t }, material, grain: 'length' },
-    { id: 'P04', name: 'Slat', role: 'slat', qty: slatCount, size: { length: W, width: p.slatWidth, thickness: 8 }, material: 'BEECH8', grain: 'length' },
-    { id: 'P05', name: 'Slat ledger batten', role: 'ledger', qty: 2, size: { length: L, width: 20, thickness: 20 }, material: 'BEECH20', grain: 'length' },
-    { id: 'P06', name: 'Corner leg', role: 'leg', qty: 4, size: { length: p.legHeight, width: 40, thickness: 40 }, material: 'BEECH40', grain: 'length' },
-  ];
-  if (centerBeam) {
-    parts.push({ id: 'P07', name: 'Center beam', role: 'center_beam', qty: 1, size: { length: L, width: 120, thickness: beamThickness }, material: `MDF${beamThickness}`, grain: 'length' });
-    parts.push({ id: 'P08', name: 'Center leg', role: 'center_leg', qty: Math.ceil(L / 800) + 1, size: { length: p.legHeight, width: 40, thickness: 40 }, material: 'BEECH40', grain: 'length' });
+
+  const legX = W / 2 - 20; const legZ = L / 2 - 20;
+  const railY = p.legHeight + 60; // rails (120mm tall) rest on top of the legs
+  const slatY = p.legHeight + 120 + 4; // slats (8mm) rest on the rails/ledgers
+
+  const parts: Part[] = [];
+  const joints: Joint[] = [];
+  let partNo = 0; let jointNo = 0;
+  const addPart = (part: Omit<Part, 'id' | 'qty'>): string => {
+    partNo += 1; const id = `P${String(partNo).padStart(2, '0')}`;
+    parts.push({ id, qty: 1, ...part }); return id;
+  };
+  const addJoint = (joint: Omit<Joint, 'id'>): void => {
+    jointNo += 1; joints.push({ id: `J${String(jointNo).padStart(2, '0')}`, ...joint });
+  };
+
+  const railL = addPart({ name: 'Side rail (left)', role: 'side_rail', size: { length: L + 2 * p.t, width: 120, thickness: p.t }, material, grain: 'length', transform: { t: [-legX, railY, 0], r: R_ALONG_LENGTH } });
+  const railR = addPart({ name: 'Side rail (right)', role: 'side_rail', size: { length: L + 2 * p.t, width: 120, thickness: p.t }, material, grain: 'length', transform: { t: [legX, railY, 0], r: R_ALONG_LENGTH } });
+  const headRail = addPart({ name: 'Head rail', role: 'head_rail', size: { length: W, width: 120, thickness: p.t }, material, grain: 'length', transform: { t: [0, railY, -L / 2], r: R_NONE } });
+  const footRail = addPart({ name: 'Foot rail', role: 'foot_rail', size: { length: W, width: 120, thickness: p.t }, material, grain: 'length', transform: { t: [0, railY, L / 2], r: R_NONE } });
+
+  const slatIds: string[] = [];
+  for (let i = 0; i < slatCount; i += 1) {
+    const z = -L / 2 + p.slatWidth / 2 + i * (p.slatWidth + slatGap);
+    slatIds.push(addPart({ name: `Slat ${i + 1}`, role: 'slat', size: { length: W, width: p.slatWidth, thickness: 8 }, material: 'BEECH8', grain: 'length', transform: { t: [0, slatY, z], r: R_FLAT } }));
   }
-  if (p.headboard) parts.push({ id: 'P09', name: 'Headboard panel', role: 'headboard', qty: 1, size: { length: W + 2 * p.t, width: p.headboardHeight, thickness: p.t }, material, grain: 'length' });
-  if (p.underBedStorage === 'drawers') parts.push({ id: 'P10', name: 'Under-bed drawer', role: 'storage_drawer', qty: p.storageDrawerCount, size: { length: L / 2 - 50, width: Math.max(250, W / p.storageDrawerCount - 40), thickness: 15 }, material: 'MDF15', grain: 'length' });
-  const joints: Joint[] = [
-    { id: 'J01', kind: 'rail_bracket', partA: 'P01', partB: 'P02', count: 4, structural: true },
-    { id: 'J02', kind: 'rail_bracket', partA: 'P01', partB: 'P03', count: 4, structural: true },
-    { id: 'J03', kind: 'screw', partA: 'P01', partB: 'P05', count: 8, structural: true },
-  ];
-  if (centerBeam) joints.push({ id: 'J04', kind: 'rail_bracket', partA: 'P02', partB: 'P07', count: 8, structural: true });
+
+  const ledgerL = addPart({ name: 'Slat ledger batten (left)', role: 'ledger', size: { length: L, width: 20, thickness: 20 }, material: 'BEECH20', grain: 'length', transform: { t: [-legX + p.t / 2 + 10, slatY - 14, 0], r: R_ALONG_LENGTH } });
+  const ledgerR = addPart({ name: 'Slat ledger batten (right)', role: 'ledger', size: { length: L, width: 20, thickness: 20 }, material: 'BEECH20', grain: 'length', transform: { t: [legX - p.t / 2 - 10, slatY - 14, 0], r: R_ALONG_LENGTH } });
+
+  const legIds: string[] = [];
+  for (const x of [-legX, legX]) for (const z of [-legZ, legZ]) {
+    legIds.push(addPart({ name: `Corner leg ${legIds.length + 1}`, role: 'leg', size: { length: p.legHeight, width: 40, thickness: 40 }, material: 'BEECH40', grain: 'length', transform: { t: [x, p.legHeight / 2, z], r: R_UPRIGHT } }));
+  }
+
+  let centerBeamId: string | undefined; const centerLegIds: string[] = [];
+  if (centerBeam) {
+    centerBeamId = addPart({ name: 'Center beam', role: 'center_beam', size: { length: L, width: 120, thickness: beamThickness }, material: `MDF${beamThickness}`, grain: 'length', transform: { t: [0, railY, 0], r: R_ALONG_LENGTH } });
+    const centerLegCount = Math.ceil(L / 800) + 1;
+    for (let i = 0; i < centerLegCount; i += 1) {
+      const z = centerLegCount > 1 ? -L / 2 + (i / (centerLegCount - 1)) * L : 0;
+      centerLegIds.push(addPart({ name: `Center leg ${i + 1}`, role: 'center_leg', size: { length: p.legHeight, width: 40, thickness: 40 }, material: 'BEECH40', grain: 'length', transform: { t: [0, p.legHeight / 2, z], r: R_UPRIGHT } }));
+    }
+  }
+
+  let headboardId: string | undefined;
+  if (p.headboard) {
+    headboardId = addPart({ name: 'Headboard panel', role: 'headboard', size: { length: W + 2 * p.t, width: p.headboardHeight, thickness: p.t }, material, grain: 'length', transform: { t: [0, p.headboardHeight / 2, -L / 2 - p.t], r: R_NONE } });
+  }
+
+  const drawerIds: string[] = [];
+  if (p.underBedStorage === 'drawers') {
+    const drawerWidth = Math.max(250, W / p.storageDrawerCount - 40);
+    for (let i = 0; i < p.storageDrawerCount; i += 1) {
+      const x = (i - (p.storageDrawerCount - 1) / 2) * (W / p.storageDrawerCount);
+      drawerIds.push(addPart({ name: `Under-bed drawer ${i + 1}`, role: 'storage_drawer', size: { length: L / 2 - 50, width: drawerWidth, thickness: 15 }, material: 'MDF15', grain: 'length', transform: { t: [x, p.legHeight / 2 - 20, -L / 4], r: R_DRAWER } }));
+    }
+  }
+
+  addJoint({ kind: 'rail_bracket', partA: railL, partB: headRail, count: 1, structural: true });
+  addJoint({ kind: 'rail_bracket', partA: railR, partB: headRail, count: 1, structural: true });
+  addJoint({ kind: 'rail_bracket', partA: railL, partB: footRail, count: 1, structural: true });
+  addJoint({ kind: 'rail_bracket', partA: railR, partB: footRail, count: 1, structural: true });
+  addJoint({ kind: 'screw', partA: railL, partB: ledgerL, count: 4, structural: true });
+  addJoint({ kind: 'screw', partA: railR, partB: ledgerR, count: 4, structural: true });
+  if (centerBeamId) addJoint({ kind: 'rail_bracket', partA: headRail, partB: centerBeamId, count: 4, structural: true });
+  if (headboardId) addJoint({ kind: 'screw', partA: headboardId, partB: headRail, count: 4, structural: true });
+
   const hardware: HardwareItem[] = [
     { kind: 'bed_rail_fitting', count: 8 }, { kind: 'slat_end_cap', count: slatCount * 2 },
-    { kind: 'leg_mounting_bracket', count: 4 + (centerBeam ? Math.ceil(L / 800) + 1 : 0) },
+    { kind: 'leg_mounting_bracket', count: legIds.length + centerLegIds.length },
   ];
-  if (centerBeam) hardware.push({ kind: 'center_beam_angle_bracket', count: 8 });
-  if (p.headboard) hardware.push({ kind: 'headboard_fixing', count: 4 });
-  if (p.underBedStorage === 'drawers') hardware.push({ kind: 'drawer_slide_pair', count: p.storageDrawerCount });
+  if (centerBeamId) hardware.push({ kind: 'center_beam_angle_bracket', count: 8 });
+  if (headboardId) hardware.push({ kind: 'headboard_fixing', count: 4 });
+  if (drawerIds.length) hardware.push({ kind: 'drawer_slide_pair', count: drawerIds.length });
+
   return { graphVersion: 1, source: { projectId: spec.projectId, revision: spec.revision }, units: 'mm', parts, joints, hardware,
-    boundingBox: { w: W + 2 * p.t, h: Math.max(120 + p.legHeight, p.headboard ? p.headboardHeight : 0), d: L + 2 * p.t },
+    boundingBox: { w: W + 2 * p.t, h: Math.max(railY + 60, p.headboard ? p.headboardHeight : 0), d: L + 2 * p.t + (p.headboard ? p.t * 2 : 0) },
     warnings: [ ...(L > 1800 ? ['Center beam is laminated to 36 mm for this long span.'] : []), ...(slatGap > 70 ? ['Slat gap exceeds 70 mm; revise slat stock.'] : []) ], };
 }
 
