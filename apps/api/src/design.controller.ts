@@ -60,6 +60,7 @@ export class DesignController {
       // Kept inline for the stateless solver endpoint. Project artifacts move
       // to content-addressed storage through the export endpoint.
       sceneGlbBase64: Buffer.from(buildGlb(result.graph)).toString('base64'),
+      objText: buildObj(result.graph),
       cutListCsv: cutList.files[0].content,
       warnings: cutList.warnings,
     };

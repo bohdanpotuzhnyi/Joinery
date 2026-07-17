@@ -95,11 +95,13 @@ function params(spec: DesignSpec): Resolved {
     return {
       width: p.width, height: p.height, depth: p.depth, t, tBack: p.tBack ?? 12,
       classic: false, classicDoorCount: 0,
+      // Raw values pass through — validation owns the rules (e.g. door
+      // shelves on an open section must ERROR, not be silently dropped).
       sections: p.sections.map((s) => ({
         closed: s.closed,
         shelves: s.shelves ?? 0,
         hangingRail: s.hangingRail ?? false,
-        doorShelves: s.closed ? (s.doorShelves ?? 0) : 0,
+        doorShelves: s.doorShelves ?? 0,
       })),
     };
   }

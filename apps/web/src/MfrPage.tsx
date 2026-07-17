@@ -90,12 +90,50 @@ const DEFAULT_CATALOG = {
 
 const ALL_CLASSES = ['wardrobe', 'bed', 'vanity', 'kommode', 'kitchen', 'shelf', 'table'];
 
+const TOOL_KINDS: { id: string; label: string }[] = [
+  { id: 'cnc_3axis', label: 'CNC (3-axis)' },
+  { id: 'cnc_5axis', label: 'CNC (5-axis)' },
+  { id: 'laser_cutter', label: 'Laser cutter' },
+  { id: 'fdm_printer', label: '3D printer (FDM)' },
+  { id: 'sla_printer', label: '3D printer (resin)' },
+  { id: 'edgebander', label: 'Edgebander' },
+  { id: 'panel_saw', label: 'Panel saw' },
+  { id: 'drill_press', label: 'Drill press' },
+  { id: 'sander', label: 'Sander' },
+  { id: 'spray_booth', label: 'Spray booth' },
+];
+
+const SERVICES: { id: string; label: string }[] = [
+  { id: 'prototype_print', label: 'Prints scale prototypes' },
+  { id: 'room_print', label: 'Prints the room shell with the model' },
+  { id: 'assembly', label: 'Assembly service' },
+  { id: 'delivery', label: 'Delivery' },
+  { id: 'design_consultation', label: 'Design consultation' },
+  { id: 'installation', label: 'On-site installation' },
+];
+
+const MODIFIABLE: { id: string; label: string }[] = [
+  { id: 'dimensions', label: 'Dimensions' },
+  { id: 'layout', label: 'Layout (sections, doors, interior)' },
+  { id: 'materials', label: 'Materials' },
+  { id: 'finishes', label: 'Finishes / colors' },
+  { id: 'hardware', label: 'Hardware' },
+];
+
+interface ToolRow { kind: string; name: string; envX?: number; envY?: number; envZ?: number }
+
 function OnboardingCard({ onDone }: { onDone: () => void }) {
   const [form, setForm] = useState({
     name: '', locale: 'de-CH', classes: ['wardrobe'] as string[],
     envX: 2500, envY: 1250, materials: 'MDF18, PLY18, MDF12',
-    system32: true, printsPrototypes: true, leadTimeDays: 15,
+    system32: true, leadTimeDays: 15,
+    services: ['prototype_print', 'room_print'] as string[],
+    modifiable: ['dimensions', 'layout', 'finishes'] as string[],
   });
+  const [tools, setTools] = useState<ToolRow[]>([
+    { kind: 'cnc_3axis', name: '', envX: 2500, envY: 1250 },
+    { kind: 'fdm_printer', name: '', envX: 220, envY: 220, envZ: 250 },
+  ]);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   async function submit(e: React.FormEvent) {
@@ -107,16 +145,28 @@ function OnboardingCard({ onDone }: { onDone: () => void }) {
       identity: { name: form.name, locale: form.locale },
       stableCatalog: DEFAULT_CATALOG,
       capabilities: [
-        {
+        // Derived from the tool list: any CNC → flat wooden parts of any shape
+        // within its envelope; any FDM/SLA printer → prototype printing.
+        ...(tools.some((t) => t.kind.startsWith('cnc')) ? [{
           process: 'cnc_wood_2d',
           materials: form.materials.split(',').map((m) => m.trim()).filter(Boolean),
           envelopeMm: { x: form.envX, y: form.envY },
           minFeatureMm: 8,
           internalCornerRadiusMm: 4,
-        },
+        }] : []),
         { process: 'drilling' },
-        ...(form.printsPrototypes ? [{ process: 'print_prototype_fdm', envelopeMm: { x: 220, y: 220, z: 250 } }] : []),
+        ...(tools.filter((t) => t.kind === 'fdm_printer' || t.kind === 'sla_printer').slice(0, 1).map((t) => ({
+          process: 'print_prototype_fdm',
+          envelopeMm: { x: t.envX ?? 220, y: t.envY ?? 220, z: t.envZ ?? 250 },
+        }))),
       ],
+      tools: tools.map((t) => ({
+        kind: t.kind,
+        ...(t.name ? { name: t.name } : {}),
+        ...(t.envX || t.envY || t.envZ ? { envelopeMm: { ...(t.envX ? { x: t.envX } : {}), ...(t.envY ? { y: t.envY } : {}), ...(t.envZ ? { z: t.envZ } : {}) } } : {}),
+      })),
+      services: form.services,
+      customerModifiable: Object.fromEntries(MODIFIABLE.map((m) => [m.id, form.modifiable.includes(m.id)])),
       ...(form.system32 ? { standards: [{ id: 'system32', params: { pitchMm: 32, boreMm: 5, setbackMm: 37 } }] } : {}),
       productClasses: form.classes,
       rules: { leadTimeDays: form.leadTimeDays, orderFormat: 'dxf+csv_v1' },
@@ -163,11 +213,46 @@ function OnboardingCard({ onDone }: { onDone: () => void }) {
       <label className="field"><span>Sheet materials (comma-separated)</span>
         <input type="text" value={form.materials} onChange={(e) => setForm({ ...form, materials: e.target.value })} />
       </label>
+      <label className="field"><span>Machines on your floor</span>
+        <div>
+          {tools.map((tool, i) => (
+            <div key={i} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <select value={tool.kind} style={{ flex: 2 }}
+                onChange={(e) => setTools((prev) => prev.map((t, j) => (j === i ? { ...t, kind: e.target.value } : t)))}>
+                {TOOL_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+              </select>
+              <input type="text" placeholder="model (optional)" value={tool.name} style={{ flex: 2 }}
+                onChange={(e) => setTools((prev) => prev.map((t, j) => (j === i ? { ...t, name: e.target.value } : t)))} />
+              <button type="button" className="btn small danger" onClick={() => setTools((prev) => prev.filter((_, j) => j !== i))}>×</button>
+            </div>
+          ))}
+          <button type="button" className="btn small" onClick={() => setTools((prev) => [...prev, { kind: 'panel_saw', name: '' }])}>+ Add machine</button>
+        </div>
+      </label>
+      <label className="field"><span>Services you offer</span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+          {SERVICES.map((sv) => (
+            <label key={sv.id} className="chip" style={{ cursor: 'pointer', ...(form.services.includes(sv.id) ? { color: 'var(--accent)', borderColor: 'var(--accent)' } : {}) }}>
+              <input type="checkbox" style={{ display: 'none' }} checked={form.services.includes(sv.id)}
+                onChange={() => setForm((f) => ({ ...f, services: f.services.includes(sv.id) ? f.services.filter((x) => x !== sv.id) : [...f.services, sv.id] }))} />
+              {sv.label}
+            </label>
+          ))}
+        </div>
+      </label>
+      <label className="field"><span>What customers may modify</span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+          {MODIFIABLE.map((m) => (
+            <label key={m.id} className="chip" style={{ cursor: 'pointer', ...(form.modifiable.includes(m.id) ? { color: 'var(--accent)', borderColor: 'var(--accent)' } : {}) }}>
+              <input type="checkbox" style={{ display: 'none' }} checked={form.modifiable.includes(m.id)}
+                onChange={() => setForm((f) => ({ ...f, modifiable: f.modifiable.includes(m.id) ? f.modifiable.filter((x) => x !== m.id) : [...f.modifiable, m.id] }))} />
+              {m.label}
+            </label>
+          ))}
+        </div>
+      </label>
       <label className="field inline"><span>System 32 drilling standard</span>
         <input type="checkbox" checked={form.system32} onChange={(e) => setForm({ ...form, system32: e.target.checked })} />
-      </label>
-      <label className="field inline"><span>Can print scale prototypes (FDM)</span>
-        <input type="checkbox" checked={form.printsPrototypes} onChange={(e) => setForm({ ...form, printsPrototypes: e.target.checked })} />
       </label>
       <label className="field"><span>Lead time (days)</span>
         <input type="number" value={form.leadTimeDays} onChange={(e) => setForm({ ...form, leadTimeDays: Number(e.target.value) })} />

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Customer surface: parametric design (zero-LLM path) + the order lifecycle —
 // confirm → manufacturer review → prototype → verify → finalize (design/06 §2).
+// Sections mode: the wardrobe is a row of open/closed compartments, each with
+// its own interior. Room context feeds validation and ships with the print.
 import { useCallback, useEffect, useState } from 'react';
 import { ModelViewer } from './ModelViewer';
-import { ArPreview } from './ArPreview';
 
 interface Part {
   id: string;
@@ -26,6 +27,7 @@ interface SolveResponse {
   };
   cutListCsv?: string;
   sceneGlbBase64?: string;
+  objText?: string;
 }
 
 interface ImageImportResponse extends SolveResponse {
@@ -46,16 +48,35 @@ interface ProjectSummary {
   lastEvent?: { note?: string; actor?: { role: string } } | null;
 }
 
+interface Section {
+  closed: boolean;
+  shelves: number;
+  hangingRail: boolean;
+  doorShelves: number;
+}
+
+interface Room { widthMm?: number; depthMm?: number; heightMm?: number; photoKey?: string }
+
 const CHIP_CLASS: Record<string, string> = {
   draft: '', manufacturer_review: 'review', prototype_printed: 'review',
   customer_verify: 'active', sanity_review: 'review', finalized: 'active',
   order_submitted: 'active', in_production: 'done', closed: 'done',
 };
 
+const DEFAULT_SECTIONS: Section[] = [
+  { closed: true, shelves: 3, hangingRail: false, doorShelves: 0 },
+  { closed: true, shelves: 0, hangingRail: true, doorShelves: 0 },
+  { closed: true, shelves: 0, hangingRail: false, doorShelves: 3 },
+  { closed: true, shelves: 2, hangingRail: false, doorShelves: 0 },
+  { closed: false, shelves: 4, hangingRail: false, doorShelves: 0 },
+];
+
 export function DesignPage() {
   const [params, setParams] = useState({
     width: 800, height: 2100, depth: 600, doorCount: 2, shelfCount: 4, hangingRail: false,
   });
+  const [sections, setSections] = useState<Section[] | null>(null); // null = classic mode
+  const [room, setRoom] = useState<Room>({});
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [mfrId, setMfrId] = useState('mfr_demo');
   const [res, setRes] = useState<SolveResponse | null>(null);
@@ -79,10 +100,17 @@ export function DesignPage() {
     refreshProjects();
   }, [refreshProjects]);
 
-  const spec = () => ({
-    specVersion: 1, projectId: 'prj_web_demo', revision: 1, manufacturerId: mfrId,
-    productType: 'wardrobe', parameters: params, origin: 'form',
-  });
+  const spec = () => {
+    const parameters: Record<string, unknown> = sections
+      ? { width: params.width, height: params.height, depth: params.depth, sections }
+      : { ...params };
+    const hasRoom = room.widthMm || room.depthMm || room.heightMm || room.photoKey;
+    return {
+      specVersion: 1, projectId: 'prj_web_demo', revision: 1, manufacturerId: mfrId,
+      productType: 'wardrobe', parameters, origin: 'form',
+      ...(hasRoom ? { room } : {}),
+    };
+  };
 
   const solve = useCallback(async (manufacturerId = mfrId) => {
     setBusy(true);
@@ -101,10 +129,11 @@ export function DesignPage() {
       setBusy(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mfrId, params]);
+  }, [mfrId, params, sections, room]);
 
   useEffect(() => { void solve(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Branch feature: read a DESIGN out of a photo/diagram via the vision model.
   function onPhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -153,6 +182,28 @@ export function DesignPage() {
     }
   }
 
+  // Main feature: attach the ROOM photo as context that travels with the spec.
+  async function uploadPhoto(file: File) {
+    const dataBase64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const r = await fetch('/api/uploads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataBase64, mime: file.type }),
+    });
+    const j = await r.json();
+    if (r.ok) {
+      setRoom((prev) => ({ ...prev, photoKey: j.key }));
+      setFlash({ kind: 'ok', text: 'Room photo attached — it travels with the design.' });
+    } else {
+      setFlash({ kind: 'err', text: j.error ?? 'Upload failed' });
+    }
+  }
+
   async function confirmAndSend() {
     setBusy(true);
     setFlash(null);
@@ -194,7 +245,7 @@ export function DesignPage() {
     const rev = await fetch(`/api/projects/${id}/revise`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ parameters: params }),
+      body: JSON.stringify({ parameters: spec().parameters }),
     }).then((r) => r.json());
     if (!rev.ok) {
       setFlash({ kind: 'err', text: rev.errors?.[0]?.message ?? rev.error ?? 'Revision failed' });
@@ -209,11 +260,14 @@ export function DesignPage() {
 
   const num = (k: keyof typeof params) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setParams((p) => ({ ...p, [k]: Number(e.target.value) }));
+  const setSection = (i: number, patch: Partial<Section>) =>
+    setSections((prev) => prev!.map((sec, j) => (j === i ? { ...sec, ...patch } : sec)));
 
   const g = res?.partGraph;
   const s = 1 / 5;
   const W = params.width * s, H = params.height * s;
-  const doorW = ((params.width - 4 - (params.doorCount - 1) * 3) / params.doorCount) * s;
+  const frontSlots = sections ? sections.length : params.doorCount;
+  const slotW = ((params.width - 4 - (frontSlots - 1) * 3) / frontSlots) * s;
 
   return (
     <>
@@ -261,12 +315,84 @@ export function DesignPage() {
           <label className="field"><span>Width (mm)</span><input type="number" value={params.width} onChange={num('width')} /></label>
           <label className="field"><span>Height (mm)</span><input type="number" value={params.height} onChange={num('height')} /></label>
           <label className="field"><span>Depth (mm)</span><input type="number" value={params.depth} onChange={num('depth')} /></label>
-          <label className="field"><span>Doors</span><input type="number" value={params.doorCount} onChange={num('doorCount')} /></label>
-          <label className="field"><span>Shelves</span><input type="number" value={params.shelfCount} onChange={num('shelfCount')} /></label>
-          <label className="field inline"><span>Hanging rail</span>
-            <input type="checkbox" checked={params.hangingRail}
-              onChange={(e) => setParams((p) => ({ ...p, hangingRail: e.target.checked }))} />
+
+          <label className="field inline"><span><b>Sections mode</b> (compartments, each open or closed)</span>
+            <input type="checkbox" checked={sections !== null}
+              onChange={(e) => {
+                if (e.target.checked) { setSections(DEFAULT_SECTIONS); setParams((p) => ({ ...p, width: Math.max(p.width, 2500) })); }
+                else setSections(null);
+              }} />
           </label>
+
+          {sections === null ? (
+            <>
+              <label className="field"><span>Doors</span><input type="number" value={params.doorCount} onChange={num('doorCount')} /></label>
+              <label className="field"><span>Shelves</span><input type="number" value={params.shelfCount} onChange={num('shelfCount')} /></label>
+              <label className="field inline"><span>Hanging rail</span>
+                <input type="checkbox" checked={params.hangingRail}
+                  onChange={(e) => setParams((p) => ({ ...p, hangingRail: e.target.checked }))} />
+              </label>
+            </>
+          ) : (
+            <div style={{ marginBottom: '0.85rem' }}>
+              {sections.map((sec, i) => (
+                <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '0.5rem 0.6rem', marginBottom: '0.45rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <b style={{ fontSize: '0.85rem' }}>Section {i + 1}</b>
+                    <span style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <label className="chip" style={{ cursor: 'pointer', ...(sec.closed ? { color: 'var(--accent)', borderColor: 'var(--accent)' } : {}) }}>
+                        <input type="checkbox" style={{ display: 'none' }} checked={sec.closed}
+                          onChange={(e) => setSection(i, { closed: e.target.checked, ...(e.target.checked ? {} : { doorShelves: 0 }) })} />
+                        {sec.closed ? 'closed' : 'open'}
+                      </label>
+                      <button type="button" className="btn small danger" onClick={() => setSections((prev) => prev!.filter((_, j) => j !== i))}>×</button>
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem 0.6rem', marginTop: '0.4rem', fontSize: '0.8rem' }}>
+                    <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>Shelves
+                      <input type="number" min={0} max={12} value={sec.shelves} style={{ width: 56 }}
+                        onChange={(e) => setSection(i, { shelves: Number(e.target.value) })} />
+                    </label>
+                    <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>Hanger
+                      <input type="checkbox" checked={sec.hangingRail}
+                        onChange={(e) => setSection(i, { hangingRail: e.target.checked })} />
+                    </label>
+                    {sec.closed && (
+                      <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>Door shelves
+                        <input type="number" min={0} max={6} value={sec.doorShelves} style={{ width: 56 }}
+                          onChange={(e) => setSection(i, { doorShelves: Number(e.target.value) })} />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <button type="button" className="btn small" disabled={sections.length >= 8}
+                onClick={() => setSections((prev) => [...prev!, { closed: true, shelves: 2, hangingRail: false, doorShelves: 0 }])}>
+                + Add section
+              </button>
+            </div>
+          )}
+
+          <h3 style={{ marginTop: '0.5rem' }}>Your room <span className="subtitle" style={{ fontWeight: 400, fontSize: '0.75rem' }}>(optional — the more we know, the better)</span></h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0 0.5rem' }}>
+            <label className="field"><span>Wall (mm)</span>
+              <input type="number" value={room.widthMm ?? ''} placeholder="3200"
+                onChange={(e) => setRoom((r) => ({ ...r, widthMm: e.target.value ? Number(e.target.value) : undefined }))} />
+            </label>
+            <label className="field"><span>Depth (mm)</span>
+              <input type="number" value={room.depthMm ?? ''} placeholder="4000"
+                onChange={(e) => setRoom((r) => ({ ...r, depthMm: e.target.value ? Number(e.target.value) : undefined }))} />
+            </label>
+            <label className="field"><span>Ceiling (mm)</span>
+              <input type="number" value={room.heightMm ?? ''} placeholder="2400"
+                onChange={(e) => setRoom((r) => ({ ...r, heightMm: e.target.value ? Number(e.target.value) : undefined }))} />
+            </label>
+          </div>
+          <label className="field"><span>Room photo {room.photoKey ? '✓ attached' : ''}</span>
+            <input type="file" accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadPhoto(f); }} />
+          </label>
+
           <button className="btn" type="submit" disabled={busy} style={{ width: '100%', marginBottom: '0.5rem' }}>
             {busy ? 'Working…' : 'Solve design'}
           </button>
@@ -277,7 +403,7 @@ export function DesignPage() {
             </button>
           )}
           {res && !res.ok && (res.errors ?? []).map((e) => (
-            <div className="msg err" key={e.code}>{e.message}</div>
+            <div className="msg err" key={e.code + e.message}>{e.message}</div>
           ))}
           {g?.warnings?.map((w) => <div className="msg warn" key={w}>{w}</div>)}
           {flash && <div className={`msg ${flash.kind}`}>{flash.text}</div>}
@@ -288,7 +414,12 @@ export function DesignPage() {
             <div className="card">
               <h3>3D model</h3>
               {res.sceneGlbBase64 && <ModelViewer glbBase64={res.sceneGlbBase64} />}
-              {res.sceneGlbBase64 && <details style={{ marginTop: '0.75rem' }}><summary>View in your room (AR)</summary><ArPreview glbBase64={res.sceneGlbBase64} /></details>}
+              {res.objText && (
+                <a className="btn" style={{ marginTop: '0.6rem' }}
+                  href={URL.createObjectURL(new Blob([res.objText], { type: 'model/obj' }))}
+                  download="wardrobe.obj"
+                >⬇ Download 3D model (OBJ)</a>
+              )}
               {!otherProductType && (
                 <>
                   <h4 style={{ marginTop: '1rem' }}>Front elevation</h4>
@@ -296,19 +427,26 @@ export function DesignPage() {
                     <svg width={W + 16} height={H + 16} role="img" aria-label="wardrobe front elevation">
                       <g transform="translate(8,8)">
                         <rect x={0} y={0} width={W} height={H} fill="#3a3128" stroke="#8a7350" rx={2} />
-                        {Array.from({ length: params.doorCount }, (_, i) => (
-                          <rect key={i}
-                            x={2 * s + i * (doorW + 3 * s)} y={2 * s}
-                            width={doorW} height={H - 4 * s}
-                            fill="#57493a" stroke="#8a7350" rx={1.5}
-                          />
-                        ))}
-                        {Array.from({ length: params.doorCount }, (_, i) => (
-                          <circle key={i}
-                            cx={i < params.doorCount / 2 ? 2 * s + (i + 1) * doorW + i * 3 * s - 7 : 2 * s + i * (doorW + 3 * s) + 7}
-                            cy={H / 2} r={2.5} fill="#e8a33d"
-                          />
-                        ))}
+                        {Array.from({ length: frontSlots }, (_, i) => {
+                          const closed = sections ? sections[i]?.closed : true;
+                          const x = 2 * s + i * (slotW + 3 * s);
+                          return closed ? (
+                            <g key={i}>
+                              <rect x={x} y={2 * s} width={slotW} height={H - 4 * s} fill="#57493a" stroke="#8a7350" rx={1.5} />
+                              <circle cx={i < frontSlots / 2 ? x + slotW - 7 : x + 7} cy={H / 2} r={2.5} fill="#e8a33d" />
+                            </g>
+                          ) : (
+                            <g key={i}>
+                              <rect x={x} y={2 * s} width={slotW} height={H - 4 * s} fill="#241f1a" stroke="#8a7350" rx={1.5} />
+                              {Array.from({ length: sections?.[i]?.shelves ?? 0 }, (_, k) => (
+                                <line key={k} x1={x} x2={x + slotW}
+                                  y1={2 * s + ((H - 4 * s) / ((sections?.[i]?.shelves ?? 0) + 1)) * (k + 1)}
+                                  y2={2 * s + ((H - 4 * s) / ((sections?.[i]?.shelves ?? 0) + 1)) * (k + 1)}
+                                  stroke="#8a7350" strokeWidth={1.5} />
+                              ))}
+                            </g>
+                          );
+                        })}
                       </g>
                     </svg>
                   </div>
@@ -321,17 +459,19 @@ export function DesignPage() {
 
             <div className="card">
               <h3>Parts &amp; hardware</h3>
-              <table>
-                <thead><tr><th>ID</th><th>Part</th><th>Qty</th><th>L × W × T (mm)</th></tr></thead>
-                <tbody>
-                  {g.parts.map((p) => (
-                    <tr key={p.id}>
-                      <td className="mono">{p.id}</td><td>{p.name}</td><td>{p.qty}</td>
-                      <td className="mono">{p.size.length} × {p.size.width} × {p.size.thickness}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ maxHeight: 340, overflowY: 'auto' }}>
+                <table>
+                  <thead><tr><th>ID</th><th>Part</th><th>Qty</th><th>L × W × T (mm)</th></tr></thead>
+                  <tbody>
+                    {g.parts.map((p) => (
+                      <tr key={p.id}>
+                        <td className="mono">{p.id}</td><td>{p.name}</td><td>{p.qty}</td>
+                        <td className="mono">{p.size.length} × {p.size.width} × {p.size.thickness}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               <ul className="hardware-list" style={{ marginTop: '0.9rem' }}>
                 {g.hardware.map((h) => (
                   <li key={h.kind}><b>{h.count}×</b> {h.kind}{h.sku ? <span className="mono"> · {h.sku}</span> : null}</li>
