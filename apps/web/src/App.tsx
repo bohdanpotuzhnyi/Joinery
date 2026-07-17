@@ -7,9 +7,11 @@ import { AdminPage } from './AdminPage';
 import { MfrPage } from './MfrPage';
 import { OpsPage } from './OpsPage';
 import { ManualPage } from './ManualPage';
+import { TablePage } from './TablePage';
 
 const nav = [
   { path: '/design', label: 'Design studio' },
+  { path: '/table', label: 'Table' },
   { path: '/mfr', label: 'Manufacturer' },
   { path: '/ops', label: 'Ops' },
   { path: '/admin', label: 'Setup' },
@@ -38,6 +40,11 @@ const titles: Record<string, { eyebrow: string; title: string; sub: string }> = 
     sub: 'The mandatory human gate: re-verify every order before it enters production.',
   },
   '/manual': { eyebrow: 'Assembly', title: 'Build manual', sub: 'Step through the deterministic instructions for an exact project revision.' },
+  '/table': {
+    eyebrow: 'Customer',
+    title: 'Table studio',
+    sub: 'Say what you want. We generate custom tops on the workshop’s predefined legs, print the candidates, and you pick the one you hold in your hand.',
+  },
 };
 
 function Home() {
@@ -109,6 +116,7 @@ export function App() {
           </div>
         )}
         {path === '/design' && <DesignPage />}
+        {path === '/table' && <TablePage />}
         {path === '/admin' && <AdminPage />}
         {path === '/mfr' && <MfrPage />}
         {path === '/ops' && <OpsPage />}
