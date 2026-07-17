@@ -11,7 +11,7 @@
     "projectId": { "type": "string", "minLength": 1 },
     "revision": { "type": "integer", "minimum": 1 },
     "manufacturerId": { "type": "string" },
-    "productType": { "type": "string", "enum": ["wardrobe", "bed", "vanity", "kommode"] },
+    "productType": { "type": "string", "enum": ["wardrobe", "bed", "vanity", "kommode", "table"] },
     "parameters": {
       "description": "Template-specific parameters, validated against the product template's own parameter schema (mm for lengths). Values may be nested (e.g. wardrobe `sections` array).",
       "type": "object",
