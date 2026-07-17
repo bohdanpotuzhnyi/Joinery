@@ -3,9 +3,14 @@
 // The gateway never trusts provider schema adherence: callers re-validate
 // every response against the contracts package's AJV validators.
 
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; mediaType: string; dataBase64: string };
+
 export interface Msg {
   role: 'user' | 'assistant';
-  content: string;
+  /** Plain text, or a content-part array for multimodal (vision) messages. */
+  content: string | ContentPart[];
 }
 
 export interface TokenUsage {
@@ -63,10 +68,18 @@ export function routeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelR
   };
 }
 
+function toOpenAIContent(content: Msg['content']) {
+  if (typeof content === 'string') return content;
+  return content.map((part) => part.type === 'text'
+    ? { type: 'text', text: part.text }
+    : { type: 'image_url', image_url: { url: `data:${part.mediaType};base64,${part.dataBase64}` } });
+}
+
 export class OpenAICompatibleModelPort implements ModelPort {
   constructor(private readonly baseUrl: string, private readonly apiKey = '', private readonly models: Record<'small' | 'large', string> = { small: 'gpt-4o-mini', large: 'gpt-4o-mini' }) {}
   async completeStructured(req: StructuredRequest): Promise<StructuredResponse> {
-    const res = await fetch(`${this.baseUrl.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}) }, body: JSON.stringify({ model: this.models[req.tier], messages: [{ role: 'system', content: req.system }, ...req.messages], max_tokens: req.maxTokens, response_format: { type: 'json_schema', json_schema: { name: 'structured_response', strict: true, schema: req.schema } } }) });
+    const messages = req.messages.map((m) => ({ role: m.role, content: toOpenAIContent(m.content) }));
+    const res = await fetch(`${this.baseUrl.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}) }, body: JSON.stringify({ model: this.models[req.tier], messages: [{ role: 'system', content: req.system }, ...messages], max_tokens: req.maxTokens, response_format: { type: 'json_schema', json_schema: { name: 'structured_response', strict: true, schema: req.schema } } }) });
     if (!res.ok) throw new ModelGatewayError(`OpenAI-compatible provider returned ${res.status}: ${await res.text()}`);
     const body = await res.json() as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
     const content = body.choices?.[0]?.message?.content; if (!content) throw new ModelGatewayError('Provider returned no structured message content.');
@@ -74,10 +87,18 @@ export class OpenAICompatibleModelPort implements ModelPort {
   }
 }
 
+function toAnthropicContent(content: Msg['content']) {
+  if (typeof content === 'string') return content;
+  return content.map((part) => part.type === 'text'
+    ? { type: 'text', text: part.text }
+    : { type: 'image', source: { type: 'base64', media_type: part.mediaType, data: part.dataBase64 } });
+}
+
 export class AnthropicModelPort implements ModelPort {
   constructor(private readonly apiKey: string, private readonly models: Record<'small' | 'large', string>) {}
   async completeStructured(req: StructuredRequest): Promise<StructuredResponse> {
-    const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': this.apiKey, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: this.models[req.tier], max_tokens: req.maxTokens, system: req.system, messages: req.messages, tools: [{ name: 'respond', description: 'Return only the validated structured result.', input_schema: req.schema }], tool_choice: { type: 'tool', name: 'respond' } }) });
+    const messages = req.messages.map((m) => ({ role: m.role, content: toAnthropicContent(m.content) }));
+    const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': this.apiKey, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: this.models[req.tier], max_tokens: req.maxTokens, system: req.system, messages, tools: [{ name: 'respond', description: 'Return only the validated structured result.', input_schema: req.schema }], tool_choice: { type: 'tool', name: 'respond' } }) });
     if (!res.ok) throw new ModelGatewayError(`Anthropic returned ${res.status}: ${await res.text()}`);
     const body = await res.json() as { content?: { type: string; input?: unknown }[]; usage?: { input_tokens?: number; output_tokens?: number } };
     const tool = body.content?.find((item) => item.type === 'tool_use'); if (!tool?.input) throw new ModelGatewayError('Anthropic returned no tool result.');

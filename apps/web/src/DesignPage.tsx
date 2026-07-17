@@ -15,6 +15,9 @@ interface Part {
 
 interface SolveResponse {
   ok: boolean;
+  error?: string;
+  /** Nest's default framework-level error shape (e.g. body-parser limits) uses this instead of `error`. */
+  message?: string;
   errors?: { code: string; message: string }[];
   partGraph?: {
     parts: Part[];
@@ -24,6 +27,13 @@ interface SolveResponse {
   cutListCsv?: string;
   sceneGlbBase64?: string;
 }
+
+interface ImageImportResponse extends SolveResponse {
+  spec?: { productType: string; parameters: Record<string, unknown> };
+  delta?: { assumptions?: string[]; clarifyingQuestion?: string | null };
+}
+
+const WARDROBE_PARAM_KEYS = ['width', 'height', 'depth', 'doorCount', 'shelfCount', 'hangingRail'] as const;
 
 interface Manufacturer { manufacturerId: string; name: string; productClasses: string[] }
 
@@ -52,6 +62,10 @@ export function DesignPage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoNote, setPhotoNote] = useState<{ assumptions?: string[]; clarifyingQuestion?: string | null } | null>(null);
+  const [otherProductType, setOtherProductType] = useState<string | null>(null);
 
   const refreshProjects = useCallback(() => {
     fetch('/api/projects').then((r) => r.json()).then(setProjects).catch(() => undefined);
@@ -72,6 +86,8 @@ export function DesignPage() {
 
   const solve = useCallback(async (manufacturerId = mfrId) => {
     setBusy(true);
+    setPhotoNote(null);
+    setOtherProductType(null);
     try {
       const r = await fetch('/api/designs/solve', {
         method: 'POST',
@@ -88,6 +104,54 @@ export function DesignPage() {
   }, [mfrId, params]);
 
   useEffect(() => { void solve(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function onPhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setPhotoPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function importFromPhoto() {
+    if (!photoPreview) return;
+    const match = /^data:([^;]+);base64,(.*)$/s.exec(photoPreview);
+    if (!match) return;
+    const [, mime, dataBase64] = match;
+    setPhotoBusy(true);
+    setFlash(null);
+    setPhotoNote(null);
+    try {
+      const r = await fetch('/api/designs/from-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataBase64, mime, manufacturerId: mfrId }),
+      });
+      const data: ImageImportResponse = await r.json();
+      if (!data.ok) {
+        setFlash({ kind: 'err', text: data.errors?.[0]?.message ?? data.error ?? data.message ?? 'Could not read a design from that photo.' });
+        return;
+      }
+      setRes(data);
+      setPhotoNote(data.delta ?? null);
+      const productType = data.spec?.productType ?? 'wardrobe';
+      if (productType === 'wardrobe') {
+        setOtherProductType(null);
+        const p = data.spec!.parameters;
+        setParams((prev) => ({
+          ...prev,
+          ...Object.fromEntries(WARDROBE_PARAM_KEYS.filter((k) => k in p).map((k) => [k, p[k]])),
+        }));
+      } else {
+        setOtherProductType(productType);
+      }
+      setFlash({ kind: 'ok', text: 'Generated a 3D model from your photo — refine it below.' });
+    } catch {
+      setFlash({ kind: 'err', text: 'API unreachable — is pnpm dev:api running?' });
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
 
   async function confirmAndSend() {
     setBusy(true);
@@ -153,6 +217,37 @@ export function DesignPage() {
 
   return (
     <>
+      <div className="card" style={{ marginBottom: '1.25rem' }}>
+        <h3>Start from a photo</h3>
+        <p className="subtitle" style={{ marginBottom: '0.9rem' }}>
+          Upload a photo or a dimensioned line drawing (e.g. an assembly-instruction diagram) and generate a starting
+          3D model from it. This is a best-effort reading of the image — check the result and refine it below.
+        </p>
+        <div style={{ display: 'flex', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <label className="field" style={{ flex: '1 1 220px', marginBottom: 0 }}>
+            <span>Image (JPEG, PNG, or WebP)</span>
+            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={onPhotoSelected} />
+          </label>
+          {photoPreview && <img src={photoPreview} alt="Selected furniture" style={{ maxHeight: 96, borderRadius: 8, border: '1px solid var(--border)' }} />}
+          <button className="btn primary" type="button" disabled={!photoPreview || photoBusy}
+            onClick={() => void importFromPhoto()}>
+            {photoBusy ? 'Reading photo…' : 'Generate design from photo'}
+          </button>
+        </div>
+        {photoNote?.clarifyingQuestion && <div className="msg warn" style={{ marginTop: '0.75rem' }}>{photoNote.clarifyingQuestion}</div>}
+        {photoNote?.assumptions && photoNote.assumptions.length > 0 && (
+          <ul style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+            {photoNote.assumptions.map((a) => <li key={a}>{a}</li>)}
+          </ul>
+        )}
+        {otherProductType && (
+          <div className="msg warn" style={{ marginTop: '0.75rem' }}>
+            Generated a {otherProductType} — the form and order flow below only support wardrobes for now, so this
+            preview isn't editable yet.
+          </div>
+        )}
+      </div>
+
       <div className="studio">
         <form className="card" onSubmit={(e) => { e.preventDefault(); void solve(); }}>
           <h3>Wardrobe parameters</h3>
@@ -175,7 +270,7 @@ export function DesignPage() {
           <button className="btn" type="submit" disabled={busy} style={{ width: '100%', marginBottom: '0.5rem' }}>
             {busy ? 'Working…' : 'Solve design'}
           </button>
-          {res?.ok && (
+          {res?.ok && !otherProductType && (
             <button className="btn primary" type="button" disabled={busy} style={{ width: '100%' }}
               onClick={() => void confirmAndSend()}>
               Confirm &amp; send to manufacturer
@@ -194,30 +289,34 @@ export function DesignPage() {
               <h3>3D model</h3>
               {res.sceneGlbBase64 && <ModelViewer glbBase64={res.sceneGlbBase64} />}
               {res.sceneGlbBase64 && <details style={{ marginTop: '0.75rem' }}><summary>View in your room (AR)</summary><ArPreview glbBase64={res.sceneGlbBase64} /></details>}
-              <h4 style={{ marginTop: '1rem' }}>Front elevation</h4>
-              <div className="drawing-wrap">
-                <svg width={W + 16} height={H + 16} role="img" aria-label="wardrobe front elevation">
-                  <g transform="translate(8,8)">
-                    <rect x={0} y={0} width={W} height={H} fill="#3a3128" stroke="#8a7350" rx={2} />
-                    {Array.from({ length: params.doorCount }, (_, i) => (
-                      <rect key={i}
-                        x={2 * s + i * (doorW + 3 * s)} y={2 * s}
-                        width={doorW} height={H - 4 * s}
-                        fill="#57493a" stroke="#8a7350" rx={1.5}
-                      />
-                    ))}
-                    {Array.from({ length: params.doorCount }, (_, i) => (
-                      <circle key={i}
-                        cx={i < params.doorCount / 2 ? 2 * s + (i + 1) * doorW + i * 3 * s - 7 : 2 * s + i * (doorW + 3 * s) + 7}
-                        cy={H / 2} r={2.5} fill="#e8a33d"
-                      />
-                    ))}
-                  </g>
-                </svg>
-              </div>
-              <p className="subtitle" style={{ fontSize: '0.8rem', marginTop: '0.6rem' }}>
-                {params.width} × {params.height} × {params.depth} mm — scale 1 px : 5 mm
-              </p>
+              {!otherProductType && (
+                <>
+                  <h4 style={{ marginTop: '1rem' }}>Front elevation</h4>
+                  <div className="drawing-wrap">
+                    <svg width={W + 16} height={H + 16} role="img" aria-label="wardrobe front elevation">
+                      <g transform="translate(8,8)">
+                        <rect x={0} y={0} width={W} height={H} fill="#3a3128" stroke="#8a7350" rx={2} />
+                        {Array.from({ length: params.doorCount }, (_, i) => (
+                          <rect key={i}
+                            x={2 * s + i * (doorW + 3 * s)} y={2 * s}
+                            width={doorW} height={H - 4 * s}
+                            fill="#57493a" stroke="#8a7350" rx={1.5}
+                          />
+                        ))}
+                        {Array.from({ length: params.doorCount }, (_, i) => (
+                          <circle key={i}
+                            cx={i < params.doorCount / 2 ? 2 * s + (i + 1) * doorW + i * 3 * s - 7 : 2 * s + i * (doorW + 3 * s) + 7}
+                            cy={H / 2} r={2.5} fill="#e8a33d"
+                          />
+                        ))}
+                      </g>
+                    </svg>
+                  </div>
+                  <p className="subtitle" style={{ fontSize: '0.8rem', marginTop: '0.6rem' }}>
+                    {params.width} × {params.height} × {params.depth} mm — scale 1 px : 5 mm
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="card">

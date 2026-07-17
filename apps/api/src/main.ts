@@ -2,12 +2,20 @@
 import 'reflect-metadata';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { json, urlencoded } from 'express';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
+// Default Express body limit is 100kb — too small for a base64-encoded photo
+// upload (image-import, room photos). Bump it to comfortably cover
+// MAX_IMAGE_BYTES (8MB) plus base64/JSON overhead.
+const BODY_LIMIT = '12mb';
+
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+  app.use(json({ limit: BODY_LIMIT }));
+  app.use(urlencoded({ extended: true, limit: BODY_LIMIT }));
   app.enableCors(); // same-origin in production behind Caddy; open for dev
 
   // The production image contains the Vite build. Keeping this in the API
